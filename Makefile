@@ -1,0 +1,17 @@
+BUILD_DIR=/go/src/github.com/twz123/oidc-reverse-proxy
+BUILDER_IMAGE=docker.io/golang:1.9.2-alpine3.7
+
+# binaries
+DOCKER=docker
+DEP=dep
+
+oidc-reverse-proxy: Gopkg.lock $(shell find pkg/ cmd/ -type f -name \*.go -print)
+	$(DOCKER) run --rm -e CGO_ENABLED=0 -v "$(shell pwd -P):$(BUILD_DIR):ro" -w "$(BUILD_DIR)" $(BUILDER_IMAGE) \
+	go build -o /dev/stdout cmd/oidc-reverse-proxy.go > oidc-reverse-proxy || { rm oidc-reverse-proxy; exit 1; }
+	chmod +x oidc-reverse-proxy
+
+Gopkg.lock: Gopkg.toml $(shell find vendor/ -type f -name \*.go -print)
+	$(DEP) ensure
+
+clean:
+	rm -f oidc-reverse-proxy
