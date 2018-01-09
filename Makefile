@@ -1,6 +1,10 @@
 BUILD_DIR=/go/src/github.com/twz123/oidc-reverse-proxy
 BUILDER_IMAGE=docker.io/golang:1.9.2-alpine3.7
 
+
+DOCKER_IMAGE_NAME=quay.io/twz123/oidc-reverse-proxy
+DOCKER_IMAGE_TAG=$(shell git log -1 --format=%h)
+
 # binaries
 DOCKER=docker
 DEP=dep
@@ -15,3 +19,11 @@ Gopkg.lock: Gopkg.toml $(shell find vendor/ -type f -name \*.go -print)
 
 clean:
 	rm -f oidc-reverse-proxy
+
+.PHONY: dockerize
+dockerize: oidc-reverse-proxy Dockerfile
+	$(DOCKER) build . -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
+
+.PHONY: dockerize
+publish-docker-image: dockerize
+	$(DOCKER) push $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)

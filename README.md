@@ -7,6 +7,8 @@ absent from incoming requests, an authentication redirect will be sent. This
 is especially useful for the [Kubernetes Dashboard][kdb] when the Kubernetes
 cluster is [secured via OpenID Connect][k8s-oidc].
 
+[![Docker Repository on Quay](https://quay.io/repository/twz123/oidc-reverse-proxy/status "Docker Repository on Quay")](https://quay.io/repository/twz123/oidc-reverse-proxy)
+
 [kdb]: https://github.com/kubernetes/dashboard
 [k8s-oidc]: https://kubernetes.io/docs/admin/authentication/#openid-connect-tokens
 
