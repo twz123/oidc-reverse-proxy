@@ -193,7 +193,7 @@ func run(osSignals <-chan os.Signal) (int, string) {
 		shutdownLatch.Done()
 	}()
 
-	glog.Info("Starting HTTP server")
+	glog.Info("Starting HTTP server on ", httpServer.Addr)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return xGeneralError, fmt.Sprintf("HTTP server exited: %s", err)
 	}
