@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -50,8 +49,9 @@ func main() {
 func run(osSignals <-chan os.Signal) (int, string) {
 	bindAddress := flag.String("bind-address", "127.0.0.1:8080", "")
 	rawUpstreamURL := flag.String("upstream-url", "", "")
-	tlsVerify := flag.Bool("tls-verify", true, "")
-	issuerURL := flag.String("issuer-url", "https://accounts.google.com", "")
+	tlsVerifyUpstream := flag.Bool("tls-verify-upstream", true, "")
+	rawIssuerURL := flag.String("issuer-url", "https://accounts.google.com", "")
+	tlsVerifyIssuer := flag.Bool("tls-verify-issuer", true, "")
 	clientID := flag.String("client-id", "", "")
 	clientSecret := flag.String("client-secret", "", "")
 	rawRredirectURL := flag.String("redirect-url", "", "")
@@ -74,8 +74,12 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	if err != nil {
 		return xCLIUsage, fmt.Sprintf("-upstream-url invalid: %s", err)
 	}
-	if *issuerURL == "" {
+	if *rawIssuerURL == "" {
 		return xCLIUsage, "-issuer-url missing"
+	}
+	issuerURL, err := url.Parse(*rawIssuerURL)
+	if err != nil {
+		return xCLIUsage, fmt.Sprintf("-issuer-url invalid: %s", err)
 	}
 	if *clientID == "" {
 		return xCLIUsage, "-client-id missing"
@@ -106,7 +110,21 @@ func run(osSignals <-chan os.Signal) (int, string) {
 
 	glog.Info("Initializing application")
 
-	authFlow, err := oidc.NewOpenIDConnectFlow(*issuerURL, *clientID, *clientSecret, redirectURL)
+	if !*tlsVerifyUpstream {
+		glog.Warning("TLS certificate verification is turned off for upstream URL ", upstreamURL)
+	}
+	if !*tlsVerifyIssuer {
+		glog.Warning("TLS certificate verification is turned off for OpenID Connect Issuer URL ", issuerURL)
+	}
+
+	authFlow, err := oidc.NewOpenIDConnectFlow(&oidc.FlowConfig{
+		IssuerURL:     issuerURL,
+		ClientID:      *clientID,
+		ClientSecret:  *clientSecret,
+		RedirectURL:   redirectURL,
+		Context:       context.Background(),
+		HTTPTransport: newHTTPTransport(*tlsVerifyIssuer),
+	})
 	if err != nil {
 		return xGeneralError, err.Error()
 	}
@@ -116,21 +134,8 @@ func run(osSignals <-chan os.Signal) (int, string) {
 		Addr: *bindAddress,
 		Handler: handler.NewAuthProxyHandler(
 			&handler.Upstream{
-				URL: upstreamURL,
-				Transport: &http.Transport{
-					DialContext: (&net.Dialer{
-						Timeout:   30 * time.Second,
-						KeepAlive: 30 * time.Second,
-						DualStack: true,
-					}).DialContext,
-					MaxIdleConns:          100,
-					IdleConnTimeout:       90 * time.Second,
-					ExpectContinueTimeout: 1 * time.Second,
-					TLSHandshakeTimeout:   10 * time.Second,
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: !*tlsVerify,
-					},
-				},
+				URL:       upstreamURL,
+				Transport: newHTTPTransport(*tlsVerifyUpstream),
 			},
 			authFlow,
 			sessions,
@@ -196,4 +201,12 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	glog.Info("HTTP server exited normally")
 
 	return xOK, ""
+}
+
+func newHTTPTransport(tlsVerify bool) *http.Transport {
+	return &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: !tlsVerify,
+		},
+	}
 }

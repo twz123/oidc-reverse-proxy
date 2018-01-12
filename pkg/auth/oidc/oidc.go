@@ -15,87 +15,90 @@ import (
 	"golang.org/x/oauth2"
 )
 
-type oidcContext struct {
+type FlowConfig struct {
+	IssuerURL              *url.URL
+	ClientID, ClientSecret string
+	RedirectURL            *url.URL
+	Context                context.Context
+	HTTPTransport          *http.Transport
+}
+type flow struct {
 	context      context.Context
 	oidcProvider *oidc.Provider
 	oidcVerifier *oidc.IDTokenVerifier
 	oauth2Config *oauth2.Config
 	redirectURL  *url.URL
-
-	cookieName string
+	cookieName   string
 }
 
-func NewOpenIDConnectFlow(issuerURL, clientID, clientSecret string, redirectURL *url.URL) (auth.Flow, error) {
-	ctx := context.Background()
+func NewOpenIDConnectFlow(config *FlowConfig) (auth.Flow, error) {
 
-	provider, err := oidc.NewProvider(ctx, issuerURL)
+	context := oidc.ClientContext(config.Context, &http.Client{
+		Transport: config.HTTPTransport,
+	})
+
+	provider, err := oidc.NewProvider(context, config.IssuerURL.String())
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create OpenID Connect provider %s", issuerURL)
-	}
-	if clientID == "" {
-		return nil, errors.New("Client ID may not be empty")
-	}
-	if clientSecret == "" {
-		return nil, errors.New("Client Secret may not be empty")
+		return nil, errors.Wrapf(err, "failed to create OpenID Connect provider %s", config.IssuerURL)
 	}
 
 	// Configure an OpenID Connect aware OAuth2 client.
 	oauth2Config := oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  redirectURL.String(),
+		ClientID:     config.ClientID,
+		ClientSecret: config.ClientSecret,
+		RedirectURL:  config.RedirectURL.String(),
 
 		// Discovery returns the OAuth2 endpoints.
 		Endpoint: provider.Endpoint(),
 
 		// "openid" is a required scope for OpenID Connect flows.
-		Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
+		Scopes: []string{oidc.ScopeOpenID},
 	}
 
-	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
+	verifier := provider.Verifier(&oidc.Config{ClientID: config.ClientID})
 
-	return &oidcContext{
-		context:      ctx,
+	return &flow{
+		context:      context,
 		oidcProvider: provider,
 		oidcVerifier: verifier,
 		oauth2Config: &oauth2Config,
-		redirectURL:  redirectURL,
+		redirectURL:  config.RedirectURL,
 	}, nil
 }
 
-type oidcChallenge struct {
-	ctx         *oidcContext
+type challenge struct {
+	flow        *flow
 	state       string
 	targetURL   *url.URL
 	redirectURL *url.URL
 }
 
-func (ctx *oidcContext) NewAuthenticator(targetURL *url.URL) (authenticator auth.Authenticator, redirectURL *url.URL, err error) {
+func (flow *flow) NewAuthenticator(targetURL *url.URL) (authenticator auth.Authenticator, redirectURL *url.URL, err error) {
 	state, err := generateRandomState()
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to generate random state")
 	}
 
-	redirectURL, err = url.Parse(ctx.oauth2Config.AuthCodeURL(state))
+	redirectURL, err = url.Parse(flow.oauth2Config.AuthCodeURL(state))
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to generate redirect URI")
 	}
 
-	return &oidcChallenge{
-		ctx:         ctx,
+	return &challenge{
+		flow:        flow,
 		state:       state,
 		targetURL:   targetURL,
 		redirectURL: redirectURL,
 	}, redirectURL, nil
 }
 
-func (challenge *oidcChallenge) Authenticate(request *http.Request) (authentication auth.Authentication, newAuthenticator auth.Authenticator, err error) {
+func (challenge *challenge) Authenticate(request *http.Request) (authentication auth.Authentication, newAuthenticator auth.Authenticator, err error) {
 	if challenge == nil {
 		return nil, nil, errors.New("no active challenge")
 	}
 
-	if request.URL.Path != challenge.ctx.redirectURL.Path {
-		return nil, nil, errors.Errorf("paths don't match: expected %s, got %s", challenge.ctx.redirectURL.Path, request.URL.Path)
+	if request.URL.Path != challenge.flow.redirectURL.Path {
+		return nil, nil, errors.Errorf("paths don't match: expected %s, got %s", challenge.flow.redirectURL.Path, request.URL.Path)
 	}
 
 	state := request.URL.Query().Get("state")
@@ -103,7 +106,7 @@ func (challenge *oidcChallenge) Authenticate(request *http.Request) (authenticat
 		return nil, nil, errors.Errorf("state didn't match: expected %s, got %s", challenge.state, state)
 	}
 
-	oauth2Token, err := challenge.ctx.oauth2Config.Exchange(challenge.ctx.context, request.URL.Query().Get("code"))
+	oauth2Token, err := challenge.flow.oauth2Config.Exchange(challenge.flow.context, request.URL.Query().Get("code"))
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to exchange code")
 	}
@@ -115,7 +118,7 @@ func (challenge *oidcChallenge) Authenticate(request *http.Request) (authenticat
 	}
 
 	// Parse and verify ID Token payload.
-	idToken, err := challenge.ctx.oidcVerifier.Verify(challenge.ctx.context, rawIDToken)
+	idToken, err := challenge.flow.oidcVerifier.Verify(challenge.flow.context, rawIDToken)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to verify ID Token")
 	}
@@ -136,20 +139,20 @@ func (challenge *oidcChallenge) Authenticate(request *http.Request) (authenticat
 
 	return &redirectingAuthentication{challenge.targetURL}, &verifiedToken{
 		auth.BearerToken{Value: rawIDToken},
-		challenge.ctx,
+		challenge.flow,
 		idToken.Expiry,
 	}, nil
 }
 
 type verifiedToken struct {
 	auth.BearerToken
-	ctx    *oidcContext
+	flow   *flow
 	expiry time.Time
 }
 
 func (token *verifiedToken) Authenticate(request *http.Request) (auth.Authentication, auth.Authenticator, error) {
 	if time.Until(token.expiry) < 30*time.Second {
-		newAuthenticator, redirectURL, err := token.ctx.NewAuthenticator(request.URL)
+		newAuthenticator, redirectURL, err := token.flow.NewAuthenticator(request.URL)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "failed to create authenticator to obtain new token")
 		}
