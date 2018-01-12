@@ -47,11 +47,15 @@ This is a toy project! So: Use at your own risk!
             log to standard error instead of files
     -redirect-url string
 
+    -require-verified-email
+            (default true)
     -session-inactivity-threshold string
             (default "5m")
     -stderrthreshold value
             logs at or above this threshold go to stderr
-    -tls-verify
+    -tls-verify-issuer
+            (default true)
+    -tls-verify-upstream
             (default true)
     -upstream-url string
 
