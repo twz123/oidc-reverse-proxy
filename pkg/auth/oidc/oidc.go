@@ -19,16 +19,17 @@ type FlowConfig struct {
 	IssuerURL              *url.URL
 	ClientID, ClientSecret string
 	RedirectURL            *url.URL
+	AcceptUnverifiedEmails bool
 	Context                context.Context
 	HTTPTransport          *http.Transport
 }
 type flow struct {
-	context      context.Context
-	oidcProvider *oidc.Provider
-	oidcVerifier *oidc.IDTokenVerifier
-	oauth2Config *oauth2.Config
-	redirectURL  *url.URL
-	cookieName   string
+	context                context.Context
+	oidcProvider           *oidc.Provider
+	oidcVerifier           *oidc.IDTokenVerifier
+	oauth2Config           *oauth2.Config
+	redirectURL            *url.URL
+	acceptUnverifiedEmails bool
 }
 
 func NewOpenIDConnectFlow(config *FlowConfig) (auth.Flow, error) {
@@ -58,11 +59,12 @@ func NewOpenIDConnectFlow(config *FlowConfig) (auth.Flow, error) {
 	verifier := provider.Verifier(&oidc.Config{ClientID: config.ClientID})
 
 	return &flow{
-		context:      context,
-		oidcProvider: provider,
-		oidcVerifier: verifier,
-		oauth2Config: &oauth2Config,
-		redirectURL:  config.RedirectURL,
+		context:                context,
+		oidcProvider:           provider,
+		oidcVerifier:           verifier,
+		oauth2Config:           &oauth2Config,
+		redirectURL:            config.RedirectURL,
+		acceptUnverifiedEmails: config.AcceptUnverifiedEmails,
 	}, nil
 }
 
@@ -133,7 +135,7 @@ func (challenge *challenge) Authenticate(request *http.Request) (authentication 
 		return nil, nil, errors.Wrap(err, "failed to parse claims")
 	}
 
-	if !claims.Verified {
+	if !challenge.flow.acceptUnverifiedEmails && !claims.Verified {
 		return nil, nil, errors.Errorf("email has not been verified: %s", claims.Email)
 	}
 

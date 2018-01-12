@@ -55,6 +55,7 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	clientID := flag.String("client-id", "", "")
 	clientSecret := flag.String("client-secret", "", "")
 	rawRredirectURL := flag.String("redirect-url", "", "")
+	requireVerifiedEmail := flag.Bool("require-verified-email", true, "")
 	rawSessionInactivityThreshold := flag.String("session-inactivity-threshold", "5m", "")
 	cookieName := flag.String("cookie-name", "_oidc_authentication", "")
 	cookieDomain := flag.String("cookie-domain", "", "")
@@ -118,12 +119,13 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	}
 
 	authFlow, err := oidc.NewOpenIDConnectFlow(&oidc.FlowConfig{
-		IssuerURL:     issuerURL,
-		ClientID:      *clientID,
-		ClientSecret:  *clientSecret,
-		RedirectURL:   redirectURL,
-		Context:       context.Background(),
-		HTTPTransport: newHTTPTransport(*tlsVerifyIssuer),
+		IssuerURL:              issuerURL,
+		ClientID:               *clientID,
+		ClientSecret:           *clientSecret,
+		RedirectURL:            redirectURL,
+		AcceptUnverifiedEmails: !*requireVerifiedEmail,
+		Context:                context.Background(),
+		HTTPTransport:          newHTTPTransport(*tlsVerifyIssuer),
 	})
 	if err != nil {
 		return xGeneralError, err.Error()
