@@ -156,13 +156,16 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	go func() {
 		glog.Info("Starting session evictor")
 
-		select {
-		case <-sessionEvictionTicker.C:
-			glog.Info("Start evicting inactive sessions")
-			sessions.EvictInactive()
-			glog.Info("Done evicting inactive sessions")
-		case <-shutdown:
-			break
+	sessionEvictor:
+		for {
+			select {
+			case <-sessionEvictionTicker.C:
+				glog.Info("Start evicting inactive sessions")
+				sessions.EvictInactive()
+				glog.Info("Done evicting inactive sessions")
+			case <-shutdown:
+				break sessionEvictor
+			}
 		}
 
 		glog.Info("Exiting session evictor")
@@ -174,9 +177,7 @@ func run(osSignals <-chan os.Signal) (int, string) {
 		select {
 		case <-osSignals:
 			glog.Info("Signal received")
-			break
 		case <-shutdown:
-			break
 		}
 
 		glog.Info("Shutting down")
