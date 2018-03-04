@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -62,6 +63,7 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	cookiePath := flag.String("cookie-path", "", "")
 	cookieHTTPOnly := flag.Bool("cookie-http-only", true, "")
 	cookieSecure := flag.Bool("cookie-secure", true, "")
+	rawExtraScopes := flag.String("extra-scopes", "", "")
 
 	flag.Parse()
 
@@ -108,6 +110,10 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	if *cookiePath == "" {
 		return xCLIUsage, "-cookie-path missing"
 	}
+	extraScopes := []string{}
+	if *rawExtraScopes != "" {
+		extraScopes = strings.Split(*rawExtraScopes, ",")
+	}
 
 	glog.Info("Initializing application")
 
@@ -126,6 +132,7 @@ func run(osSignals <-chan os.Signal) (int, string) {
 		AcceptUnverifiedEmails: !*requireVerifiedEmail,
 		Context:                context.Background(),
 		HTTPTransport:          newHTTPTransport(*tlsVerifyIssuer),
+		ExtraScopes:            extraScopes,
 	})
 	if err != nil {
 		return xGeneralError, err.Error()

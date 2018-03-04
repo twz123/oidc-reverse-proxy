@@ -22,6 +22,7 @@ type FlowConfig struct {
 	AcceptUnverifiedEmails bool
 	Context                context.Context
 	HTTPTransport          *http.Transport
+	ExtraScopes            []string
 }
 type flow struct {
 	context                context.Context
@@ -43,6 +44,12 @@ func NewOpenIDConnectFlow(config *FlowConfig) (auth.Flow, error) {
 		return nil, errors.Wrapf(err, "failed to create OpenID Connect provider %s", config.IssuerURL)
 	}
 
+	scopes := []string{oidc.ScopeOpenID}
+
+	if config.ExtraScopes != nil {
+		scopes = append(scopes, config.ExtraScopes...)
+	}
+
 	// Configure an OpenID Connect aware OAuth2 client.
 	oauth2Config := oauth2.Config{
 		ClientID:     config.ClientID,
@@ -53,7 +60,7 @@ func NewOpenIDConnectFlow(config *FlowConfig) (auth.Flow, error) {
 		Endpoint: provider.Endpoint(),
 
 		// "openid" is a required scope for OpenID Connect flows.
-		Scopes: []string{oidc.ScopeOpenID},
+		Scopes: scopes,
 	}
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: config.ClientID})
