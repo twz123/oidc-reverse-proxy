@@ -44,6 +44,7 @@ func NewOpenIDConnectFlow(config *FlowConfig) (auth.Flow, error) {
 		return nil, errors.Wrapf(err, "failed to create OpenID Connect provider %s", config.IssuerURL)
 	}
 
+	// "openid" is a required scope for OpenID Connect flows.
 	scopes := []string{oidc.ScopeOpenID}
 
 	if config.ExtraScopes != nil {
@@ -59,7 +60,6 @@ func NewOpenIDConnectFlow(config *FlowConfig) (auth.Flow, error) {
 		// Discovery returns the OAuth2 endpoints.
 		Endpoint: provider.Endpoint(),
 
-		// "openid" is a required scope for OpenID Connect flows.
 		Scopes: scopes,
 	}
 
