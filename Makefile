@@ -24,6 +24,6 @@ clean:
 dockerize: oidc-reverse-proxy Dockerfile
 	$(DOCKER) build . -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
 
-.PHONY: dockerize
+.PHONY: publish-docker-image
 publish-docker-image: dockerize
 	$(DOCKER) push $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
