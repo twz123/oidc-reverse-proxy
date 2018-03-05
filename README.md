@@ -18,51 +18,55 @@ This is a toy project! So: Use at your own risk!
 
 ## Usage
 
-    Usage of oidc-reverse-proxy:
-    -alsologtostderr
-            log to standard error as well as files
-    -bind-address string
-            (default "127.0.0.1:8080")
-    -client-id string
-
-    -client-secret string
-
-    -cookie-domain string
-
-    -cookie-http-only
-            (default true)
-    -cookie-name string
-            (default "_oidc_authentication")
-    -cookie-path string
-
-    -cookie-secure
-            (default true)
-    -issuer-url string
-            (default "https://accounts.google.com")
-    -log_backtrace_at value
-            when logging hits line file:N, emit a stack trace
-    -log_dir string
-            If non-empty, write log files in this directory
-    -logtostderr
-            log to standard error instead of files
-    -redirect-url string
-
-    -require-verified-email
-            (default true)
-    -session-inactivity-threshold string
-            (default "5m")
-    -stderrthreshold value
-            logs at or above this threshold go to stderr
-    -tls-verify-issuer
-            (default true)
-    -tls-verify-upstream
-            (default true)
-    -upstream-url string
-
-    -v value
-            log level for V logs
-    -vmodule value
-            comma-separated list of pattern=N settings for file-filtered logging
+```
+Usage of oidc-reverse-proxy:
+  -alsologtostderr
+    	log to standard error as well as files
+  -bind-address string
+    	 (default "127.0.0.1:8080")
+  -client-id string
+    	
+  -client-secret string
+    	
+  -cookie-domain string
+    	
+  -cookie-http-only
+    	 (default true)
+  -cookie-name string
+    	 (default "_oidc_authentication")
+  -cookie-path string
+    	
+  -cookie-secure
+    	 (default true)
+  -extra-scopes string
+    	
+  -issuer-url string
+    	 (default "https://accounts.google.com")
+  -log_backtrace_at value
+    	when logging hits line file:N, emit a stack trace
+  -log_dir string
+    	If non-empty, write log files in this directory
+  -logtostderr
+    	log to standard error instead of files
+  -redirect-url string
+    	
+  -require-verified-email
+    	 (default true)
+  -session-inactivity-threshold string
+    	 (default "5m")
+  -stderrthreshold value
+    	logs at or above this threshold go to stderr
+  -tls-verify-issuer
+    	 (default true)
+  -tls-verify-upstream
+    	 (default true)
+  -upstream-url string
+    	
+  -v value
+    	log level for V logs
+  -vmodule value
+    	comma-separated list of pattern=N settings for file-filtered logging
+```
 
 ## Building
 
