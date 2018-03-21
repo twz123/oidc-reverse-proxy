@@ -25,21 +25,21 @@ Usage of oidc-reverse-proxy:
   -bind-address string
     	 (default "127.0.0.1:8080")
   -client-id string
-    	
+
   -client-secret string
-    	
+
   -cookie-domain string
-    	
+
   -cookie-http-only
     	 (default true)
   -cookie-name string
     	 (default "_oidc_authentication")
   -cookie-path string
-    	
+
   -cookie-secure
     	 (default true)
   -extra-scopes string
-    	
+
   -issuer-url string
     	 (default "https://accounts.google.com")
   -log_backtrace_at value
@@ -49,19 +49,21 @@ Usage of oidc-reverse-proxy:
   -logtostderr
     	log to standard error instead of files
   -redirect-url string
-    	
+
   -require-verified-email
     	 (default true)
   -session-inactivity-threshold string
     	 (default "5m")
   -stderrthreshold value
     	logs at or above this threshold go to stderr
+  -tls-issuer-root-ca-file string
+    	If set, this root certificate authority will be used when verifying issuer certificate. This must be a valid PEM-encoded CA bundle.
   -tls-verify-issuer
     	 (default true)
   -tls-verify-upstream
     	 (default true)
   -upstream-url string
-    	
+
   -v value
     	log level for V logs
   -vmodule value

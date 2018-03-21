@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -53,6 +55,7 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	tlsVerifyUpstream := flag.Bool("tls-verify-upstream", true, "")
 	rawIssuerURL := flag.String("issuer-url", "https://accounts.google.com", "")
 	tlsVerifyIssuer := flag.Bool("tls-verify-issuer", true, "")
+	tlsIssuerRootCaFile := flag.String("tls-issuer-root-ca-file", "", "If set, this root certificate authority will be used when verifying issuer certificate. This must be a valid PEM-encoded CA bundle.")
 	clientID := flag.String("client-id", "", "")
 	clientSecret := flag.String("client-secret", "", "")
 	rawRredirectURL := flag.String("redirect-url", "", "")
@@ -131,7 +134,7 @@ func run(osSignals <-chan os.Signal) (int, string) {
 		RedirectURL:            redirectURL,
 		AcceptUnverifiedEmails: !*requireVerifiedEmail,
 		Context:                context.Background(),
-		HTTPTransport:          newHTTPTransport(*tlsVerifyIssuer),
+		HTTPTransport:          newHTTPTransport(*tlsVerifyIssuer, *tlsIssuerRootCaFile),
 		ExtraScopes:            extraScopes,
 	})
 	if err != nil {
@@ -144,7 +147,7 @@ func run(osSignals <-chan os.Signal) (int, string) {
 		Handler: handler.NewAuthProxyHandler(
 			&handler.Upstream{
 				URL:       upstreamURL,
-				Transport: newHTTPTransport(*tlsVerifyUpstream),
+				Transport: newHTTPTransport(*tlsVerifyUpstream, ""),
 			},
 			authFlow,
 			sessions,
@@ -212,10 +215,25 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	return xOK, ""
 }
 
-func newHTTPTransport(tlsVerify bool) *http.Transport {
+func newHTTPTransport(tlsVerify bool, rootCaFile string) *http.Transport {
+
+	tlsConfig := tls.Config{
+		InsecureSkipVerify: !tlsVerify,
+	}
+	if rootCaFile != "" {
+		tlsConfig.RootCAs = x509.NewCertPool()
+
+		certBytes, err := ioutil.ReadFile(rootCaFile)
+		if err != nil {
+			glog.Fatalf("Can't read file: %v (-tls-issuer-root-ca-file=%s)", err, rootCaFile)
+		}
+
+		ok := tlsConfig.RootCAs.AppendCertsFromPEM(certBytes)
+		if !ok {
+			glog.Fatalf("No certificates found in %s (-tls-issuer-root-ca-file=%s)", rootCaFile, rootCaFile)
+		}
+	}
 	return &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: !tlsVerify,
-		},
+		TLSClientConfig: &tlsConfig,
 	}
 }
