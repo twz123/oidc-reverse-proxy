@@ -1,9 +1,9 @@
 BUILD_DIR=/go/src/github.com/twz123/oidc-reverse-proxy
-BUILDER_IMAGE=docker.io/golang:1.9.2-alpine3.7
+BUILDER_IMAGE=docker.io/golang:1.10.0-alpine3.7
 
 
 DOCKER_IMAGE_NAME=quay.io/twz123/oidc-reverse-proxy
-DOCKER_IMAGE_TAG=$(shell git log -1 --format=%h)
+DOCKER_IMAGE_TAG=$(shell git describe --tags --always --dirty)
 
 # binaries
 DOCKER=docker
