@@ -90,9 +90,6 @@ func run(osSignals <-chan os.Signal) (int, string) {
 	if *clientID == "" {
 		return xCLIUsage, "-client-id missing"
 	}
-	if *clientSecret == "" {
-		return xCLIUsage, "-client-secret missing"
-	}
 	if *rawRredirectURL == "" {
 		return xCLIUsage, "-redirect-url missing"
 	}
