@@ -80,7 +80,6 @@ func (h *handler) serveSession(session sessions.LockedSession, request *http.Req
 }
 
 func (h *handler) sessionID(request *http.Request) (string, error) {
-	request.Cookies()
 	sessionCookie, err := request.Cookie(h.sessionCookieTemplate.Name)
 	if err != nil {
 		return "", err
