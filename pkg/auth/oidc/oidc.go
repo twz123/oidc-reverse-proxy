@@ -11,6 +11,7 @@ import (
 	"github.com/twz123/oidc-reverse-proxy/pkg/auth"
 
 	oidc "github.com/coreos/go-oidc"
+	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 )
@@ -76,11 +77,12 @@ func NewOpenIDConnectFlow(config *FlowConfig) (auth.Flow, error) {
 }
 
 type challenge struct {
-	flow        *flow
-	state       string
-	targetURL   *url.URL
-	redirectURL *url.URL
+	flow  *flow
+	state string
 }
+
+// Used to store the effective target URL of an OIDC dance.
+const targetURLQueryParam = "target"
 
 func (flow *flow) NewAuthenticator(targetURL *url.URL) (authenticator auth.Authenticator, redirectURL *url.URL, err error) {
 	state, err := generateRandomState()
@@ -90,49 +92,95 @@ func (flow *flow) NewAuthenticator(targetURL *url.URL) (authenticator auth.Authe
 
 	redirectURL, err = url.Parse(flow.oauth2Config.AuthCodeURL(state))
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to generate redirect URI")
+		return nil, nil, errors.Wrap(err, "failed to generate redirect URL")
+	}
+
+	redirectURLWithTarget, err := flow.redirectURLWithTarget(targetURL, state)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to obtain redirect URL with target")
 	}
 
 	return &challenge{
-		flow:        flow,
-		state:       state,
-		targetURL:   targetURL,
-		redirectURL: redirectURL,
-	}, redirectURL, nil
+		flow:  flow,
+		state: state,
+	}, redirectURLWithTarget, nil
 }
 
-func (challenge *challenge) Authenticate(request *http.Request) (authentication auth.Authentication, newAuthenticator auth.Authenticator, err error) {
-	if challenge == nil {
+func (flow *flow) redirectURLWithTarget(targetURL *url.URL, state string) (*url.URL, error) {
+	oauth2ConfigForTarget, err := flow.oauth2ConfigForTarget(targetURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to obtain OAuth2 configuration for target URL")
+	}
+
+	return url.Parse(oauth2ConfigForTarget.AuthCodeURL(state))
+}
+
+func (flow *flow) oauth2ConfigForTarget(targetURL *url.URL) (*oauth2.Config, error) {
+	var patchedConfig oauth2.Config
+
+	patchedConfig = *flow.oauth2Config
+	patchedRedirectURL, err := url.Parse(patchedConfig.RedirectURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse redirect URL")
+	}
+	setQueryParam(patchedRedirectURL, targetURLQueryParam, targetURL.String())
+	patchedConfig.RedirectURL = patchedRedirectURL.String()
+
+	return &patchedConfig, nil
+}
+
+func (c *challenge) Authenticate(request *http.Request) (authentication auth.Authentication, newAuthenticator auth.Authenticator, err error) {
+	if c == nil {
 		return nil, nil, errors.New("no active challenge")
 	}
 
-	if request.URL.Path != challenge.flow.redirectURL.Path {
-		return nil, nil, errors.Errorf("paths don't match: expected %s, got %s", challenge.flow.redirectURL.Path, request.URL.Path)
+	if request.URL.Path != c.flow.redirectURL.Path {
+		redirectURL, err := c.flow.redirectURLWithTarget(request.URL, c.state)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "failed to obtain redirect URL with target")
+		}
+		glog.Infof("%s %s >>> not a callback, retrying (%s)", request.RemoteAddr, request.RequestURI, redirectURL)
+		return &redirectingAuthentication{redirectURL}, c, nil
 	}
 
+	// verify state param
 	state := request.URL.Query().Get("state")
-	if state != challenge.state {
-		return nil, nil, errors.Errorf("state didn't match: expected %s, got %s", challenge.state, state)
+	if state != c.state {
+		return nil, nil, errors.Errorf("state didn't match: expected %s, got %s", c.state, state)
 	}
 
-	oauth2Token, err := challenge.flow.oauth2Config.Exchange(challenge.flow.context, request.URL.Query().Get("code"))
+	// extraxt target URL from callback query param
+	targetURL, err := url.Parse(request.URL.Query().Get(targetURLQueryParam))
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to parse target URL")
+	}
+
+	// get a configuration that is seeded with the right target URL
+	oauth2ConfigForTarget, err := c.flow.oauth2ConfigForTarget(targetURL)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to obtain OAuth2 configuration for target URL")
+	}
+
+	// exchange code against the OAuth2 token with the Identity Provider
+	glog.Infof("%s %s >>> exchanging code for target URL %s", request.RemoteAddr, request.RequestURI, targetURL)
+	oauth2Token, err := oauth2ConfigForTarget.Exchange(c.flow.context, request.URL.Query().Get("code"))
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to exchange code")
 	}
 
-	// Extract the ID Token from OAuth2 token.
+	// extract the ID Token from OAuth2 token
 	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
 	if !ok {
 		return nil, nil, errors.Wrap(err, "no ID Token in server response")
 	}
 
-	// Parse and verify ID Token payload.
-	idToken, err := challenge.flow.oidcVerifier.Verify(challenge.flow.context, rawIDToken)
+	// parse and verify ID Token payload
+	idToken, err := c.flow.oidcVerifier.Verify(c.flow.context, rawIDToken)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to verify ID Token")
 	}
 
-	// Extract custom claims
+	// extract custom claims
 	var claims struct {
 		Email    string `json:"email"`
 		Verified bool   `json:"email_verified"`
@@ -142,13 +190,15 @@ func (challenge *challenge) Authenticate(request *http.Request) (authentication 
 		return nil, nil, errors.Wrap(err, "failed to parse claims")
 	}
 
-	if !challenge.flow.acceptUnverifiedEmails && !claims.Verified {
+	// enforce a validated email, if required
+	if !c.flow.acceptUnverifiedEmails && !claims.Verified {
 		return nil, nil, errors.Errorf("email has not been verified: %s", claims.Email)
 	}
 
-	return &redirectingAuthentication{challenge.targetURL}, &verifiedToken{
+	// done: return a redirect to the target and the ID token
+	return &redirectingAuthentication{targetURL}, &verifiedToken{
 		auth.BearerToken{Value: rawIDToken},
-		challenge.flow,
+		c.flow,
 		idToken.Expiry,
 	}, nil
 }
@@ -188,4 +238,10 @@ func generateRandomState() (string, error) {
 	}
 
 	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+func setQueryParam(u *url.URL, key, value string) {
+	queryParams := u.Query()
+	queryParams.Set(key, value)
+	u.RawQuery = queryParams.Encode()
 }
